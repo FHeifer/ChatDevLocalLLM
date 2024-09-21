@@ -74,3 +74,6 @@ class ChatGPTConfig:
     frequency_penalty: float = 0.0
     logit_bias: Dict = field(default_factory=dict)
     user: str = ""
+import os
+os.environ["OPENAI_API_KEY"] = "lm-studio"
+os.environ["OPENAI_API_BASE"] = "http://localhost:1234/v1"
