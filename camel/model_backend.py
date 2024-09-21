@@ -1,12 +1,12 @@
 # =========== Copyright 2023 @ CAMEL-AI.org. All Rights Reserved. ===========
-# Licensed under the Apache License, Version 2.0 (the “License”);
+# Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an “AS IS” BASIS,
+# distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
@@ -30,12 +30,9 @@ except ImportError:
 
 import os
 
-OPENAI_API_KEY = os.environ['OPENAI_API_KEY']
-if 'BASE_URL' in os.environ:
-    BASE_URL = os.environ['BASE_URL']
-else:
-    BASE_URL = None
-
+# Modified to use OPENAI_API_BASE and set default values
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', 'lm-studio')
+OPENAI_API_BASE = os.environ.get('OPENAI_API_BASE', 'http://localhost:1234/v1')
 
 class ModelBackend(ABC):
     r"""Base class for different model backends.
@@ -54,7 +51,6 @@ class ModelBackend(ABC):
         """
         pass
 
-
 class OpenAIModel(ModelBackend):
     r"""OpenAI API in a unified ModelBackend interface."""
 
@@ -62,6 +58,13 @@ class OpenAIModel(ModelBackend):
         super().__init__()
         self.model_type = model_type
         self.model_config_dict = model_config_dict
+        
+        # Initialize the OpenAI client here
+        if openai_new_api:
+            self.client = openai.OpenAI(
+                api_key=OPENAI_API_KEY,
+                base_url=OPENAI_API_BASE,
+            )
 
     def run(self, *args, **kwargs):
         string = "\n".join([message["content"] for message in kwargs["messages"]])
@@ -71,17 +74,6 @@ class OpenAIModel(ModelBackend):
         num_prompt_tokens += gap_between_send_receive
 
         if openai_new_api:
-            # Experimental, add base_url
-            if BASE_URL:
-                client = openai.OpenAI(
-                    api_key=OPENAI_API_KEY,
-                    base_url=BASE_URL,
-                )
-            else:
-                client = openai.OpenAI(
-                    api_key=OPENAI_API_KEY
-                )
-
             num_max_token_map = {
                 "gpt-3.5-turbo": 4096,
                 "gpt-3.5-turbo-16k": 16384,
@@ -98,7 +90,7 @@ class OpenAIModel(ModelBackend):
             num_max_completion_tokens = num_max_token - num_prompt_tokens
             self.model_config_dict['max_tokens'] = num_max_completion_tokens
 
-            response = client.chat.completions.create(*args, **kwargs, model=self.model_type.value,
+            response = self.client.chat.completions.create(*args, **kwargs, model=self.model_type.value,
                                                       **self.model_config_dict)
 
             cost = prompt_cost(
@@ -131,6 +123,9 @@ class OpenAIModel(ModelBackend):
             num_max_completion_tokens = num_max_token - num_prompt_tokens
             self.model_config_dict['max_tokens'] = num_max_completion_tokens
 
+            # For older OpenAI API versions, set the API base and key manually
+            openai.api_base = OPENAI_API_BASE
+            openai.api_key = OPENAI_API_KEY
             response = openai.ChatCompletion.create(*args, **kwargs, model=self.model_type.value,
                                                     **self.model_config_dict)
 
@@ -147,7 +142,6 @@ class OpenAIModel(ModelBackend):
             if not isinstance(response, Dict):
                 raise RuntimeError("Unexpected return from OpenAI API")
             return response
-
 
 class StubModel(ModelBackend):
     r"""A dummy model used for unit tests."""
@@ -166,7 +160,6 @@ class StubModel(ModelBackend):
                      message=dict(content=ARBITRARY_STRING, role="assistant"))
             ],
         )
-
 
 class ModelFactory:
     r"""Factory of backend models.
